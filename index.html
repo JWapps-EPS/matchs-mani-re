@@ -317,6 +317,8 @@ tr:hover td{background:rgba(255,255,255,.02);}
   <button id="nav-progression" onclick="showPage('progression')">PROGRESSION</button>
   <span class="spacer"></span>
   <button class="cfg-btn btn" onclick="openConfig()" title="Configuration">⚙</button>
+  <button class="cfg-btn btn" onclick="exportData()" title="Exporter / Sauvegarder">💾</button>
+  <label class="cfg-btn btn" style="cursor:pointer;" title="Charger une sauvegarde">📂<input type="file" id="import-file" accept=".json" style="display:none;" onchange="importData(event)"></label>
   <button class="reset-btn btn" onclick="openReset()">🗑</button>
 </nav>
 
@@ -578,23 +580,79 @@ let state={
   profMode:false
 };
 
-function save(){localStorage.setItem('eps_v5',JSON.stringify(state));}
+// Sauvegarde : localStorage + indicateur visuel
+function save(){
+  const json=JSON.stringify(state);
+  // localStorage (fonctionne en ligne / serveur local)
+  try{localStorage.setItem('eps_v5',json);}catch(e){}
+  // Indicateur visuel "sauvegardé"
+  showSaveIndicator();
+}
+
+function showSaveIndicator(){
+  let dot=document.getElementById('save-dot');
+  if(!dot){
+    dot=document.createElement('span');
+    dot.id='save-dot';
+    dot.style.cssText='position:fixed;bottom:10px;right:10px;background:var(--accent3);color:#111;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:.72rem;padding:4px 10px;border-radius:20px;z-index:999;transition:opacity .5s;pointer-events:none;';
+    document.body.appendChild(dot);
+  }
+  dot.textContent='✓ Sauvegardé';
+  dot.style.opacity='1';
+  clearTimeout(dot._t);
+  dot._t=setTimeout(()=>dot.style.opacity='0',1800);
+}
+
 function load(){
   const r=localStorage.getItem('eps_v5')||localStorage.getItem('eps_v4')||localStorage.getItem('eps_v3');
   if(!r)return;
+  applyData(JSON.parse(r));
+}
+
+function applyData(s){
   try{
-    const s=JSON.parse(r);
     state=Object.assign(state,s);
     if(!state.classes||!state.classes.length)state.classes=['Classe 1'];
     if(state.currentClasse==null)state.currentClasse=0;
-    // Rétrocompat : anciens élèves sans classeIdx
     state.eleves.forEach(e=>{if(e.classeIdx==null)e.classeIdx=0;if(e.absent==null)e.absent=false;});
     if(!state.matchs)state.matchs={1:{1:[],2:[],3:[],4:[]},2:{1:[],2:[],3:[],4:[]}};
     [1,2].forEach(s2=>{if(!state.matchs[s2])state.matchs[s2]={1:[],2:[],3:[],4:[]};[1,2,3,4].forEach(p=>{if(!state.matchs[s2][p])state.matchs[s2][p]=[];});});
     if(!state.objectifs)state.objectifs={1:10,2:10,3:10,4:10};
     if(!state.config)state.config={threshExcellent:3,threshBienLow:2,threshProgresLow:1};
     if(!state.sessionName)state.sessionName='Ma séance';
-  }catch(e){}
+  }catch(e){console.error('Erreur chargement données',e);}
+}
+
+// Export manuel → télécharge un fichier .json
+function exportData(){
+  const nom=(state.sessionName||'eps').replace(/[^a-z0-9]/gi,'_');
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`${nom}_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// Import → charge un fichier .json
+function importData(event){
+  const file=event.target.files[0];
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const s=JSON.parse(e.target.result);
+      applyData(s);
+      save();
+      renderClasseTabs();
+      updateSessionLabel();
+      showPage(state.currentPage||'eleves');
+      renderEleves();
+      alert('✓ Données chargées : '+state.sessionName);
+    }catch(err){alert('Erreur : fichier JSON invalide.');}
+  };
+  reader.readAsText(file);
+  event.target.value=''; // reset input
 }
 
 load();
